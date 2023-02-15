@@ -53,10 +53,12 @@ void relPosDecode() {
     if((baseline*100) > (autoBaseLine - baseLineLimit) && (baseline*100) < (autoBaseLine + baseLineLimit))
     {
       baseLineCheck = true;
+      dualBaselineFail = false;
     }
     else
     {
       baseLineCheck = false;
+      dualBaselineFail = true;
     }
 //**************************************************************************
     double p = sqrt((baseline * baseline) - (relPosD * relPosD));
@@ -86,8 +88,13 @@ void relPosDecode() {
       {
         imuHandler();             //No IMU so use dual data direct
         dualReadyRelPos = true;   //RelPos ready is true so PAOGI will send when the GGA is also ready
+        dualRTKFail = false;
       }
-    }  
+    } 
+    else
+    {
+        dualRTKFail = true;
+    }
 }
 
 void imuDualDelta()

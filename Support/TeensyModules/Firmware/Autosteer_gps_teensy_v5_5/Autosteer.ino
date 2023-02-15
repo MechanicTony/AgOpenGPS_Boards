@@ -777,6 +777,50 @@ void ReceiveUdp()
 
                     //off to AOG
                     SendUdp(scanReply, sizeof(scanReply), ipDest, portDest);
+
+                    if (!passThroughGPS && !passThroughGPS2)
+                    {
+                        Serial.println(inoVersion);
+
+                        Serial.print("\r\nCPU Temp = ");
+                        float temp = tempmonGetTemp();
+                        Serial.print(temp, 2);
+                        Serial.println(" degC");
+                        Serial.print("CPU Speed = ");
+                        Serial.println(F_CPU_ACTUAL);
+                        Serial.print("GPS Baud Rate = ");
+                        Serial.println(baudGPS);
+
+                        Serial.print("\r\nAdapter IP: ");
+                        Serial.print(rem_ip[0]); Serial.print(" . ");
+                        Serial.print(rem_ip[1]); Serial.print(" . ");
+                        Serial.print(rem_ip[2]); Serial.print(" . ");
+                        Serial.print(rem_ip[3]);
+
+                        Serial.print("\r\nModule  IP: ");
+                        Serial.print(Eth_myip[0]); Serial.print(" . ");
+                        Serial.print(Eth_myip[1]); Serial.print(" . ");
+                        Serial.print(Eth_myip[2]); Serial.print(" . ");
+                        Serial.print(Eth_myip[3]); Serial.println();
+
+                        if (!Autosteer_running) Serial.println("\r\n!! Autosteer disabled... Check ADS1115");
+                        else if (PWM_Frequency == 0) Serial.println("\r\nAutosteer running, PWM Frequency = 490hz");
+                        else if (PWM_Frequency == 1) Serial.println("\r\nAutosteer running, PWM Frequency = 122hz");
+                        else if (PWM_Frequency == 2) Serial.println("\r\nAutosteer running, PWM Frequency = 3921hz");
+
+                        if (useBNO08x) Serial.println("\r\nBNO08x available via I2C");
+                        else if (useCMPS) Serial.println("\r\nCMPS14 available via I2C");
+                        else Serial.println("\r\n!! No IMU available");
+
+                        if (GGA_Available == false) Serial.println("\r\n!! GPS Data Missing... Check F9P Config");
+                        else if (!useDual) Serial.println("\r\nGPS Single GPS mode");
+                        else if (useDual && !dualDataFail && !dualRTKFail && !dualBaselineFail) Serial.println("\r\nGPS Dual GPS mode");
+                        else if (dualDataFail) Serial.println("\r\n!! Dual Data Checksum Failed");
+                        else if (dualRTKFail) Serial.println("\r\n!! Dual RTK/Quality Failed... Check Antennas");
+                        else if (dualBaselineFail) Serial.println("\r\n!! Dual Baseline Moving Too Much... Check Antennas");
+
+                        Serial.println("\r\n --------- ");
+                    }
                 }
             }
         } //end if 80 81 7F

@@ -25,6 +25,8 @@
 // CFG-UART2-BAUDRATE 460800
 // Serial 2 In RTCM
 
+String inoVersion = ("\r\nFirmware Version v5.7.1_HydraulicMode, 15.02.2023");
+
 /************************* User Settings *************************/
 // Serial Ports
 #define SerialAOG Serial                //AgIO USB conection
@@ -128,6 +130,9 @@ byte velocityPWM_Pin = 36;      // Velocity (MPH speed) PWM pin
 extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 
 bool useDual = false;
+bool dualBaselineFail = true;
+bool dualRTKFail = true;
+bool dualDataFail = true;
 bool dualReadyGGA = false;
 bool dualReadyRelPos = false;
 
@@ -337,7 +342,8 @@ void setup()
   Serial.print("useBNO08x = ");
   Serial.println(useBNO08x);
 
-  Serial.println("\r\nEnd setup, waiting for GPS...\r\n");
+  Serial.print(inoVersion);
+  Serial.println(", waiting for GPS...\r\n");
 }
 
 void loop()
@@ -346,7 +352,7 @@ void loop()
     {
         if (systick_millis_count - PortSwapTime >= 10000)
         {
-            Serial.println("Swapping GPS ports...\r\n");
+            Serial.println("GPS Data Missing... Check F9P Config\r\n");
             SerialGPSTmp = SerialGPS;
             SerialGPS = SerialGPS2;
             SerialGPS2 = SerialGPSTmp;
@@ -633,12 +639,13 @@ void loop()
             //if(deBug) Serial.println("RelPos Message Recived");
             digitalWrite(GPSRED_LED, LOW);   //Turn red GPS LED OFF (we are now in dual mode so green LED)
             useDual = true;
+            dualDataFail = false;
             relPosDecode();
         }
-        /*  else {
-          if(deBug) Serial.println("ACK Checksum Failure: ");
-          }
-        */
+        else
+        {
+            dualDataFail = true;
+        }
         relposnedByteCount = 0;
     }
 
