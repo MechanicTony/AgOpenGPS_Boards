@@ -57,9 +57,6 @@ const uint32_t nrBaudrates = sizeof(baudrates)/sizeof(baudrates[0]);
 #define ImuWire Wire        //SCL=19:A5 SDA=18:A4
 #define RAD_TO_DEG_X_10 572.95779513082320876798154814105
 
-//Swap BNO08x roll & pitch?
-//const bool swapRollPitch = false;
-
 const bool invertRoll= true;  //Used for IMU with dual antenna
 #define baseLineLimit 5       //Max CM differance in baseline
 
@@ -221,9 +218,9 @@ struct ubxPacket
 void setup()
 {
     delay(500);                         //Small delay so serial can monitor start up
-    //set_arm_clock(150000000);           //Set CPU speed to 150mhz
-    //Serial.print("CPU speed set to: ");
-    //Serial.println(F_CPU_ACTUAL);
+    set_arm_clock(150000000);           //Set CPU speed to 150mhz
+    Serial.print("CPU speed set to: ");
+    Serial.println(F_CPU_ACTUAL);
 
   pinMode(GGAReceivedLED, OUTPUT);
   pinMode(Power_on_LED, OUTPUT);

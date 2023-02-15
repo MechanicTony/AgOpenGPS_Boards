@@ -16,12 +16,16 @@
      122hz = 1
      3921hz = 2
 */
-#define PWM_Frequency 0
+#define PWM_Frequency 1
+
+//WAS Calabration
+float inputWAS[] =  { -50.00, -45.0, -40.0, -35.0, -30.0, -25.0, -20.0, -15.0, -10.0, -5.0, 0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0 };  //Input WAS do not adjust
+float outputWAS[] = { -50.00, -45.0, -40.0, -35.0, -30.0, -25.0, -20.0, -15.0, -10.0, -5.0, 0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0 };
 
 /////////////////////////////////////////////
 
 // if not in eeprom, overwrite
-#define EEP_Ident 2400
+#define EEP_Ident 2500
 
 //   ***********  Motor drive connections  **************888
 //Connect ground only for cytron, Connect Ground and +5v for IBT2
@@ -277,10 +281,15 @@ void autosteerLoop()
     encEnable = true;
 
     //If connection lost to AgOpenGPS, the watchdog will count up and turn off steering
-    if (watchdogTimer++ > 250) watchdogTimer = WATCHDOG_FORCE_VALUE;
+    if (watchdogTimer++ > 250)
+    {
+        watchdogTimer = WATCHDOG_FORCE_VALUE;
+        steerSwitch = 1; // reset values like it turned off
+        currentState = 1;
+    }
 
     //read all the switches
-    workSwitch = digitalRead(WORKSW_PIN);  // read work switch
+    workSwitch = digitalRead(WORKSW_PIN);     // read work switch
 
     if (steerConfig.SteerSwitch == 1)         //steer switch on - off
     {
@@ -323,6 +332,16 @@ void autosteerLoop()
       }
     }
 
+    remoteSwitch = digitalRead(REMOTE_PIN); //read auto steer enable switch open = 0n closed = Off
+
+    //Hydraulic pressure switch must be closed (Sig-Gnd) for steering to engage
+    if (remoteSwitch == 1 || steerSwitch == 1 || gpsSpeed > 25)
+    {
+        steerSwitch = 1; // reset values like it turned off
+        currentState = 1;
+        watchdogTimer = WATCHDOG_FORCE_VALUE;
+    }
+    /*
     if (steerConfig.ShaftEncoder && pulseCount >= steerConfig.PulseCountMax)
     {
       steerSwitch = 1; // reset values like it turned off
@@ -357,8 +376,7 @@ void autosteerLoop()
           previous = 0;
       }
     }
-
-    remoteSwitch = digitalRead(REMOTE_PIN); //read auto steer enable switch open = 0n closed = Off
+    */
     switchByte = 0;
     switchByte |= (remoteSwitch << 2); //put remote in bit 2
     switchByte |= (steerSwitch << 1);   //put steerswitch status in bit 1 position
@@ -410,6 +428,19 @@ void autosteerLoop()
     //Ackerman fix
     if (steerAngleActual < 0) steerAngleActual = (steerAngleActual * steerSettings.AckermanFix);
 
+    //WAS fault, cut steering
+    if ((steerAngleActual < inputWAS[0]) || (steerAngleActual > inputWAS[20]))
+    {
+        steerSwitch = 1; // reset values like it turned off
+        currentState = 1;
+        previous = 0;
+        watchdogTimer = WATCHDOG_FORCE_VALUE;
+    }
+
+    //Map WAS
+    float mappedWAS = multiMap<float>(steerAngleActual, inputWAS, outputWAS, 21);
+    steerAngleActual = mappedWAS;
+
     if (watchdogTimer < WATCHDOG_THRESHOLD)
     {
       //Enable H Bridge for IBT2, hyd aux, etc for cytron
@@ -428,6 +459,9 @@ void autosteerLoop()
 
       steerAngleError = steerAngleActual - steerAngleSetPoint;   //calculate the steering error
       //if (abs(steerAngleError)< steerSettings.lowPWM) steerAngleError = 0;
+
+      //Don't turn wheels if speed less than 0.2km/hr
+      if (gpsSpeed < 0.2) steerAngleError = 0;
 
       calcSteeringPID();  //do the pid
       motorDrive();       //out to motors the pwm value
@@ -539,7 +573,7 @@ void ReceiveUdp()
 
                 //Serial.println(gpsSpeed);
 
-                if ((bitRead(guidanceStatus, 0) == 0) || (gpsSpeed < 0.1) || (steerSwitch == 1))
+                if ((bitRead(guidanceStatus, 0) == 0) /* || (gpsSpeed < 0.1)*/ || (steerSwitch == 1))
                 {
                     watchdogTimer = WATCHDOG_FORCE_VALUE; //turn off steering motor
                 }
@@ -615,7 +649,7 @@ void ReceiveUdp()
             }
 
             //steer settings
-            else if (autoSteerUdpData[3] == 0xFC && Autosteer_running)  //252
+            else if (autoSteerUdpData[3] == 0xFC)  //252
             {
                 //PID values
                 steerSettings.Kp = ((float)autoSteerUdpData[5]);   // read Kp from AgOpenGPS
@@ -767,4 +801,24 @@ void EncoderFunc()
     pulseCount++;
     encEnable = false;
   }
+}
+
+//Rob Tillaart, https://github.com/RobTillaart/MultiMap
+template<typename T>
+T multiMap(T value, T* _in, T* _out, uint8_t size)
+{
+    // take care the value is within range
+    // value = constrain(value, _in[0], _in[size-1]);
+    if (value <= _in[0]) return _out[0];
+    if (value >= _in[size - 1]) return _out[size - 1];
+
+    // search right interval
+    uint8_t pos = 1;  // _in[0] already tested
+    while (value > _in[pos]) pos++;
+
+    // this will handle all exact "points" in the _in array
+    if (value == _in[pos]) return _out[pos];
+
+    // interpolate in the right segment for the rest
+    return (value - _in[pos - 1]) * (_out[pos] - _out[pos - 1]) / (_in[pos] - _in[pos - 1]) + _out[pos - 1];
 }
