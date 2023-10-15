@@ -25,7 +25,7 @@
 // CFG-UART2-BAUDRATE 460800
 // Serial 2 In RTCM
 
-String inoVersion = ("\r\nFirmware Version v5.7.1_HydraulicMode, 15.02.2023");
+String inoVersion = ("\r\nFirmware Version v5.7.3_HydraulicMode, 15.10.2023");
 
 /************************* User Settings *************************/
 // Serial Ports
@@ -136,12 +136,9 @@ bool dualDataFail = true;
 bool dualReadyGGA = false;
 bool dualReadyRelPos = false;
 
-// booleans to see if we are using CMPS or BNO08x
-bool useCMPS = false;
+// booleans to see what mode BNO08x
 bool useBNO08x = false;
-
-//CMPS always x60
-#define CMPS14_ADDRESS 0x60
+bool useBNO08xRVC = false;
 
 // BNO08x address variables to check where it is
 const uint8_t bno08xAddresses[] = { 0x4A, 0x4B };
@@ -183,6 +180,14 @@ float roll = 0;
 float pitch = 0;
 float yaw = 0;
 
+//Roomba Vac mode for BNO085 and data
+#include "BNO_RVC.h"
+BNO_rvc rvc = BNO_rvc();
+BNO_rvcData bnoData;
+elapsedMillis bnoTimer;
+bool bnoTrigger = false;
+HardwareSerial* SerialIMU = &Serial5;   //IMU BNO-085
+
 //Fusing BNO with Dual
 double rollDelta;
 double rollDeltaSmooth;
@@ -223,7 +228,7 @@ struct ubxPacket
 void setup()
 {
     delay(500);                         //Small delay so serial can monitor start up
-    set_arm_clock(150000000);           //Set CPU speed to 150mhz
+    set_arm_clock(450000000);           //Set CPU speed to 450mhz
     Serial.print("CPU speed set to: ");
     Serial.println(F_CPU_ACTUAL);
 
@@ -266,81 +271,24 @@ void setup()
   Serial.println("\r\nStarting Ethernet...");
   EthernetStart();
 
-  Serial.println("\r\nStarting IMU...");
-  //test if CMPS working
-  uint8_t error;
+  Serial.println("\r\nStarting RVC IMU...");
+  SerialIMU->begin(115200);
+  rvc.begin(SerialIMU);
 
-  ImuWire.begin();
-  
-  //Serial.println("Checking for CMPS14");
-  ImuWire.beginTransmission(CMPS14_ADDRESS);
-  error = ImuWire.endTransmission();
-
-  if (error == 0)
-  {
-    //Serial.println("Error = 0");
-    Serial.print("CMPS14 ADDRESs: 0x");
-    Serial.println(CMPS14_ADDRESS, HEX);
-    Serial.println("CMPS14 Ok.");
-    useCMPS = true;
-  }
-  else
-  {
-    //Serial.println("Error = 4");
-    Serial.println("CMPS not Connected or Found");
-  }
-
-  if (!useCMPS)
-  {
-      for (int16_t i = 0; i < nrBNO08xAdresses; i++)
-      {
-          bno08xAddress = bno08xAddresses[i];
-
-          //Serial.print("\r\nChecking for BNO08X on ");
-          //Serial.println(bno08xAddress, HEX);
-          ImuWire.beginTransmission(bno08xAddress);
-          error = ImuWire.endTransmission();
-
-          if (error == 0)
-          {
-              //Serial.println("Error = 0");
-              Serial.print("0x");
-              Serial.print(bno08xAddress, HEX);
-              Serial.println(" BNO08X Ok.");
-
-              // Initialize BNO080 lib
-              if (bno08x.begin(bno08xAddress, ImuWire)) //??? Passing NULL to non pointer argument, remove maybe ???
-              {
-                  //Increase I2C data rate to 400kHz
-                  ImuWire.setClock(400000); 
-
-                  delay(300);
-
-                  // Use gameRotationVector and set REPORT_INTERVAL
-                  bno08x.enableGameRotationVector(REPORT_INTERVAL);
-                  useBNO08x = true;
-              }
-              else
-              {
-                  Serial.println("BNO080 not detected at given I2C address.");
-              }
-          }
-          else
-          {
-              //Serial.println("Error = 4");
-              Serial.print("0x");
-              Serial.print(bno08xAddress, HEX);
-              Serial.println(" BNO08X not Connected or Found");
-          }
-          if (useBNO08x) break;
-      }
-  }
-
-  delay(100);
-  Serial.print("\r\nuseCMPS = ");
-  Serial.println(useCMPS);
-  Serial.print("useBNO08x = ");
-  Serial.println(useBNO08x);
+    static elapsedMillis rvcBnoTimer = 0;
+    Serial.println("\r\nChecking for serial BNO08x");
+    while (rvcBnoTimer < 1000)
+    {
+        //check if new bnoData
+        if (rvc.read(&bnoData))
+        {
+            useBNO08xRVC = true;
+            Serial.println("Serial BNO08x Good To Go :-)");
+            imuHandler();
+            break;
+        }
+    }
+    if (!useBNO08xRVC)  Serial.println("No Serial BNO08x not Connected or Found");
 
   Serial.print(inoVersion);
   Serial.println(", waiting for GPS...\r\n");
@@ -358,6 +306,15 @@ void loop()
             SerialGPS2 = SerialGPSTmp;
             PortSwapTime = systick_millis_count;
         }
+    }
+
+    //RVC BNO08x
+    if (rvc.read(&bnoData)) useBNO08xRVC = true;
+
+    if (useBNO08xRVC && bnoTimer > 40 && bnoTrigger)
+    {
+        bnoTrigger = false;
+        imuHandler();   //Get IMU data ready
     }
 
     // Pass NTRIP etc to GPS

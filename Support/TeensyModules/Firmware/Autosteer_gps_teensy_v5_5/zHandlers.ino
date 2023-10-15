@@ -72,26 +72,25 @@ void GGA_Handler() //Rec'd GGA
     blink = !blink;
     GGA_Available = true;
 
+    bnoTimer = 0;
+    bnoTrigger = true;
+
     if (useDual)
     {
        dualReadyGGA = true;
     }
 
-    if (useBNO08x || useCMPS)
+    if (useBNO08xRVC)
     {
        imuHandler();          //Get IMU data ready
        BuildNmea();           //Build & send data GPS data to AgIO (Both Dual & Single)
        dualReadyGGA = false;  //Force dual GGA ready false because we just sent it to AgIO based off the IMU data
-       if (!useDual)
-       {
-        digitalWrite(GPSRED_LED, HIGH);    //Turn red GPS LED ON, we have GGA and must have a IMU     
-        digitalWrite(GPSGREEN_LED, LOW);   //Make sure the Green LED is OFF     
-       }
     }
-    else if (!useBNO08x && !useCMPS && !useDual) 
+    else if (!useBNO08xRVC && !useDual)
     {
-        digitalWrite(GPSRED_LED, blink);   //Flash red GPS LED, we have GGA but no IMU or dual
-        digitalWrite(GPSGREEN_LED, LOW);   //Make sure the Green LED is OFF
+        itoa(0, imuYawRate, 10);
+        itoa(0, imuRoll, 10);
+        itoa(0, imuPitch, 10);
         itoa(65535, imuHeading, 10);       //65535 is max value to stop AgOpen using IMU in Panda
         BuildNmea();
     }
@@ -175,71 +174,56 @@ void imuHandler()
 {
     int16_t temp = 0;
 
-    if (useCMPS)
+    if (useBNO08xRVC)
     {
-        //the heading x10
-        Wire.beginTransmission(CMPS14_ADDRESS);
-        Wire.write(0x1C);
-        Wire.endTransmission();
+        float angVel;
 
-        Wire.requestFrom(CMPS14_ADDRESS, 3);
-        while (Wire.available() < 3);
+        // Fill rest of Panda Sentence - Heading
+        itoa(bnoData.yawX10, imuHeading, 10);
 
-        roll = int16_t(Wire.read() << 8 | Wire.read());
-        if(invertRoll)
+        if (steerConfig.IsUseY_Axis)
         {
-          roll *= -1;
+            // the pitch x100
+            itoa(bnoData.pitchX10, imuPitch, 10);
+
+            // the roll x100
+            itoa(bnoData.rollX10, imuRoll, 10);
+        }
+        else
+        {
+            // the pitch x100
+            itoa(bnoData.rollX10, imuPitch, 10);
+
+            // the roll x100
+            itoa(bnoData.pitchX10, imuRoll, 10);
         }
 
-        // the heading x10
-        Wire.beginTransmission(CMPS14_ADDRESS);
-        Wire.write(0x02);
-        Wire.endTransmission();
+        //Serial.print(rvc.angCounter);
+        //Serial.print(", ");
+        //Serial.print(bnoData.angVel);
+        //Serial.print(", ");
+        // YawRate
+        if (rvc.angCounter > 0)
+        {
+            angVel = ((float)bnoData.angVel) / (float)rvc.angCounter;
+            angVel *= 10.0;
+            rvc.angCounter = 0;
+            bnoData.angVel = (int16_t)angVel;
+        }
+        else
+        {
+            bnoData.angVel = 0;
+        }
 
-        Wire.requestFrom(CMPS14_ADDRESS, 3);
-        while (Wire.available() < 3);
-
-        temp = Wire.read() << 8 | Wire.read();
-        correctionHeading = temp * 0.1;
-        correctionHeading = correctionHeading * DEG_TO_RAD;
-        itoa(temp, imuHeading, 10);
-
-        // 3rd byte pitch
-        int8_t pitch = Wire.read();
-        itoa(pitch, imuPitch, 10);
-
-        // the roll x10
-        temp = (int16_t)roll;
-        itoa(temp, imuRoll, 10);
-
-        // YawRate - 0 for now
-        itoa(0, imuYawRate, 10);
-    }
-
-    if (useBNO08x)
-    {
-        //BNO is reading in its own timer    
-        // Fill rest of Panda Sentence - Heading
-        temp = yaw;
-        itoa(temp, imuHeading, 10);
-
-        // the pitch x10
-        temp = (int16_t)pitch;
-        itoa(temp, imuPitch, 10);
-
-        // the roll x10
-        temp = (int16_t)roll;
-        itoa(temp, imuRoll, 10);
-
-        // YawRate - 0 for now
-        itoa(0, imuYawRate, 10);
+        itoa(bnoData.angVel, imuYawRate, 10);
+        bnoData.angVel = 0;
     }
 
     // No else, because we want to use dual heading and IMU roll when both connected
     if (useDual)
     {
         // We have a IMU so apply the dual/IMU roll/heading error to the IMU data.
-        if (useCMPS || useBNO08x)
+        if (useBNO08xRVC)
         {
             float dualTemp;   //To convert IMU data (x10) to a float for the PAOGI so we have the decamal point
                      

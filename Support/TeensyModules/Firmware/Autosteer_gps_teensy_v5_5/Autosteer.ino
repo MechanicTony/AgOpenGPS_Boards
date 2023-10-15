@@ -334,6 +334,19 @@ void autosteerLoop()
 
     remoteSwitch = digitalRead(REMOTE_PIN); //read auto steer enable switch open = 0n closed = Off
 
+    //Use analog pressure sensor
+    sensorSample = (float)analogRead(PRESSURE_SENSOR_PIN);
+    sensorSample *= 0.25;
+    sensorReading = sensorReading * 0.6 + sensorSample * 0.4;
+    if (sensorReading >= steerConfig.PulseCountMax)
+    {
+        remoteSwitch = 1;
+    }
+    else
+    {
+        remoteSwitch = 0;
+    }
+
     //Hydraulic pressure switch must be closed (Sig-Gnd) for steering to engage
     if (remoteSwitch == 1 || steerSwitch == 1 || gpsSpeed > 25)
     {
@@ -730,7 +743,7 @@ void ReceiveUdp()
 
                 SendUdp(helloFromAutoSteer, sizeof(helloFromAutoSteer), Eth_ipDestination, portDestination);
                 }
-                if(useBNO08x || useCMPS)
+                if(useBNO08xRVC)
                 {
                  SendUdp(helloFromIMU, sizeof(helloFromIMU), Eth_ipDestination, portDestination); 
                 }
@@ -808,8 +821,7 @@ void ReceiveUdp()
                         else if (PWM_Frequency == 1) Serial.println("\r\nAutosteer running, PWM Frequency = 122hz");
                         else if (PWM_Frequency == 2) Serial.println("\r\nAutosteer running, PWM Frequency = 3921hz");
 
-                        if (useBNO08x) Serial.println("\r\nBNO08x available via I2C");
-                        else if (useCMPS) Serial.println("\r\nCMPS14 available via I2C");
+                        if (useBNO08xRVC) Serial.println("\r\nBNO08x available via SerialRVC");
                         else Serial.println("\r\n!! No IMU available");
 
                         if (GGA_Available == false) Serial.println("\r\n!! GPS Data Missing... Check F9P Config");
